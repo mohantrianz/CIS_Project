@@ -1,0 +1,56 @@
+---
+- name: role-scan-health-check || rule_17_2_1.yml || Ensure Audit Application Group Management is set to Success and Failure
+  block:
+  - name: Ensure Audit Application Group Management is set to Success and Failure
+    ansible.windows.win_audit_policy_system:
+      category: "Account Management"
+      subcategory: "Audit Application Group Management"
+      audit_type: "Success and Failure"
+    notify:
+      - restart_audit_service
+  
+  - name: Get the current Audit Application Group Management setting
+    ansible.windows.win_shell: |
+      $audit = Get-AuditPolicy | Where-Object { $_.Subcategory -eq 'Audit Application Group Management' } | Select-Object -ExpandProperty AuditFlags
+      return $audit
+    register: current_setting
+  
+  - name: Display the current setting for Audit Application Group Management
+    debug:
+      msg: "{{ current_setting.stdout }}"
+  
+  - name: role-scan-health-check || rule_17_2_1.yml || Add Compliant Policy Status In Report
+    include_role:
+      name: role-report-management
+      tasks_from: generate_report
+    vars:
+      var_rule: "rule 17.2.1"
+      var_report_name: Windows_Compliance_Report
+      var_add_line: "{{ ansible_hostname }},Success"
+    when: "'Success and Failure' in current_setting.stdout"
+  
+  - name: role-scan-health-check || rule_17_2_1.yml || Add Non-Compliant Policy Status In Report
+    include_role:
+      name: role-report-management
+      tasks_from: generate_report
+    vars:
+      var_rule: "rule 17.2.1"
+      var_report_name: Windows_Compliance_Report
+      var_add_line: "{{ ansible_hostname }},Failure"
+    when: "'Success and Failure' not in current_setting.stdout"
+  rescue:
+  - name: role-scan-health-check || rule_17_2_1.yml || Error Occured In This Policy Execution
+    import_role:
+      name: role-report-management
+      tasks_from: generate_report
+    vars:
+      var_rule: "rule 17.2.1"
+      var_report_name: Windows_Compliance_Report
+      var_add_line: "{{ ansible_hostname }},Error,Error Occured In This Policy Execution"
+  
+  handlers:
+    - name: restart_audit_service
+      ansible.windows.win_service:
+        name: eventlog
+        state: restarted
+
